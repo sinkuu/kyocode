@@ -83,7 +83,7 @@ pub fn decode(s: &str) -> Option<Vec<u8>> {
     //     std::iter::once(c).collect::<String>().len() == 3
     // }));
 
-    if s.len() < 5 {
+    if s.len() < 5 * 3 {
         // No header available
         return None;
     }
