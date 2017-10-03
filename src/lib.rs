@@ -1,3 +1,4 @@
+extern crate itertools;
 #[cfg(test)]
 #[macro_use]
 extern crate quickcheck;
@@ -11,47 +12,60 @@ pub use chars::KYOCODE_CHARS;
 const BITS_PER_CODE: u8 = 10;
 const BITS_PER_BYTE: u8 = 8;
 
+fn div_roundup(lhs: usize, rhs: usize) -> usize {
+    lhs / rhs + if lhs % rhs > 0 { 1 } else { 0 }
+}
+
 pub fn encode(bs: &[u8]) -> String {
-    let mut res =
-        String::with_capacity(3 * (5 + bs.len() * 8 / 10 + if (bs.len() * 8) % 10 > 0 { 1 } else { 0 }));
+    let mut res = String::with_capacity(3 * (5 + div_roundup(bs.len() * 8, 10)));
 
     let hash = digest(&SHA256, bs);
     let hash = &hash.as_ref()[0..5];
-    res.push(KYOCODE_CHARS[(hash[0] as usize) << 2 | (hash[1] as usize) >> 6]);
-    res.push(KYOCODE_CHARS[(hash[1] as usize & ((1 << 6) - 1)) << 4 | (hash[2] as usize) >> 4]);
-    res.push(KYOCODE_CHARS[(hash[2] as usize & ((1 << 4) - 1)) << 6 | (hash[3] as usize) >> 2]);
-    res.push(KYOCODE_CHARS[(hash[3] as usize & ((1 << 2) - 1)) << 8 | (hash[4] as usize)]);
+    push_bytes(hash, &mut res);
+
     let last = (bs.len() * 8) % 10;
     res.push(KYOCODE_CHARS[if 0 < last && last <= 2 { 1 } else { 0 }]);
 
-    let mut acc = 0u16;
-    let mut rem = BITS_PER_CODE;
-    for &b in bs {
-        if rem == 8 {
-            acc |= b as u16;
-            res.push(KYOCODE_CHARS[acc as usize]);
-            rem = BITS_PER_CODE;
-            acc = 0;
-        } else if rem < 8 {
-            acc |= b as u16 >> (8 - rem);
-            res.push(KYOCODE_CHARS[acc as usize]);
-            acc = (b << rem >> rem) as u16;
-            rem = BITS_PER_CODE - (8 - rem);
-            acc <<= rem;
-        } else {
-            acc |= b as u16;
-            rem -= 8;
-            acc <<= rem;
-        }
-        // println!("{:02X} {:010b} {:2} {}", b, acc, rem, res);
-    }
-
-    if rem % BITS_PER_CODE > 0 {
-        res.push(KYOCODE_CHARS[acc as usize]);
-        // println!("__ {:010b} __ {}", acc, res);
-    }
+    push_bytes(bs, &mut res);
 
     res
+}
+
+fn push_bytes(bs: &[u8], res: &mut String) {
+    if bs.len() == 1 {
+        res.push(KYOCODE_CHARS[(bs[0] as usize) << 2]);
+    } else {
+        let mut consumed = 0;
+        for (i, s) in bs.windows(2).enumerate() {
+            if i < bs.len() - 2 {
+                if consumed == 8 {
+                    consumed = 0;
+                    continue;
+                }
+
+                res.push(
+                    KYOCODE_CHARS[(((s[0] as usize) << (2 + consumed)) & ((1 << 10) - 1))
+                                      | (s[1] >> (6 - consumed)) as usize],
+                );
+                consumed += 2;
+            } else {
+                if consumed == 8 {
+                    res.push(KYOCODE_CHARS[(s[1] as usize) << 2]);
+                    break;
+                }
+
+                res.push(
+                    KYOCODE_CHARS[(((s[0] as usize) << (2 + consumed)) & ((1 << 10) - 1))
+                                      | (s[1] >> (6 - consumed)) as usize],
+                );
+                consumed += 2;
+
+                if consumed != 8 {
+                    res.push(KYOCODE_CHARS[((s[1] as usize) << (2 + consumed)) & ((1 << 10) - 1)]);
+                }
+            }
+        }
+    }
 }
 
 pub fn decode(s: &str) -> Option<Vec<u8>> {
