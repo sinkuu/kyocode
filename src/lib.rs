@@ -12,7 +12,8 @@ const BITS_PER_CODE: u8 = 10;
 const BITS_PER_BYTE: u8 = 8;
 
 pub fn encode(bs: &[u8]) -> String {
-    let mut res = String::with_capacity(5 + bs.len() / 10 * 8 + (bs.len() % 10) * 8 / 10);
+    let mut res =
+        String::with_capacity(3 * (5 + bs.len() * 8 / 10 + if (bs.len() * 8) % 10 > 0 { 1 } else { 0 }));
 
     let hash = digest(&SHA256, bs);
     let hash = &hash.as_ref()[0..5];
