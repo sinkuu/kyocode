@@ -17,17 +17,27 @@ fn div_roundup(lhs: usize, rhs: usize) -> usize {
 }
 
 pub fn encode(bs: &[u8]) -> String {
-    let mut res = String::with_capacity(3 * (5 + div_roundup(bs.len() * 8, 10)));
+    let mut res = String::with_capacity(
+        (5
+            + div_roundup(
+                bs.len().checked_mul(8 / 2).expect("length overflow"),
+                10 / 2,
+            )).checked_mul(3)
+            .expect("length overflow"),
+    );
+    // let cap = res.capacity();
 
     let hash = digest(&SHA256, bs);
     let hash = &hash.as_ref()[0..5];
     push_bytes(hash, &mut res);
 
-    let last = (bs.len() * 8) % 10;
-    res.push(KYOCODE_CHARS[if 0 < last && last <= 2 { 1 } else { 0 }]);
+    let last = bs.len().checked_mul(8).expect("length overflow") % 10;
+    let padded = 0 < last && last <= 2; // padded more than a byte
+    res.push(KYOCODE_CHARS[if padded { 1 } else { 0 }]);
 
     push_bytes(bs, &mut res);
 
+    // debug_assert!(res.capacity() == cap);
     res
 }
 
@@ -70,16 +80,13 @@ fn push_bytes(bs: &[u8], res: &mut String) {
 
 pub fn decode(s: &str) -> Option<Vec<u8>> {
     // debug_assert!(KYOCODE_CHARS.iter().all(|c| {
-    //     <String as std::iter::FromIterator<_>>::from_iter(std::iter::once(c)).len() == 3
+    //     std::iter::once(c).collect::<String>().len() == 3
     // }));
 
     if s.len() < 5 {
         // No header available
         return None;
     }
-
-    let len = (s.len() - 5) / 3;
-    let mut res = Vec::with_capacity(len / 8 * 10 + (len % 8) * 10 / 8);
 
     let header = &s[0..3 * 5];
     let header = header
@@ -89,10 +96,22 @@ pub fn decode(s: &str) -> Option<Vec<u8>> {
     let header = try_opt!(header);
     let header = header.as_slice();
 
+    if header[4] & (((1 << 10) - 1) ^ 1) != 0 {
+        return None;
+    }
+
+    let padded = header[4] & 1 == 1; // padded more than a byte
+
+    let len = s.len() / 3 - 5;
+    let mut res = Vec::with_capacity(
+        try_opt!(len.checked_mul(10 / 2)) / (8 / 2) - if padded { 1 } else { 0 },
+    );
+    // let cap = res.capacity();
+
     let mut rem = 8;
     let mut acc = 0u8;
     for c in s.chars().skip(5) {
-        let i = try_opt!(KYOCODE_CHARS.binary_search(&c)) as u16;
+        let i = try_opt!(KYOCODE_CHARS.binary_search(&c).ok()) as u16;
 
         let mut nxt = 10 - rem;
         acc |= (i >> nxt) as u8;
@@ -105,7 +124,7 @@ pub fn decode(s: &str) -> Option<Vec<u8>> {
         acc = (i << rem) as u8;
     }
 
-    if rem == 0 && header[4] & 1 == 0 {
+    if rem == 0 && !padded {
         res.push(acc);
     }
 
@@ -122,16 +141,43 @@ pub fn decode(s: &str) -> Option<Vec<u8>> {
         return None;
     }
 
+    // debug_assert!(res.capacity() == cap);
     Some(res)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use quickcheck::TestResult;
+
+    #[test]
+    fn sample() {
+        assert!(encode(b"Hello world") == "患的桟春一宴沈紺刊剤袋附液悔");
+        assert!(decode("患的桟春一宴沈紺刊剤袋附液悔").unwrap() == b"Hello world");
+        assert!(decode("患的桟春一宴沈紺刊時袋附液悔").is_none());
+        assert!(decode("患的桟春時宴沈紺刊剤袋附液悔").is_none());
+        assert!(decode("患的桟春一宴沈紺☃剤袋附液悔").is_none());
+        assert!(decode("☃的桟春一宴沈紺刊剤袋附液悔").is_none());
+    }
 
     quickcheck! {
         fn identity(bs: Vec<u8>) -> bool {
             decode(&encode(&bs)).unwrap() == bs
+        }
+
+        fn checksum(bs: Vec<u8>, idx: usize, add: usize) -> TestResult {
+            if add == KYOCODE_CHARS.len() - 1 {
+                return TestResult::discard();
+            }
+
+            let mut code = encode(&bs).chars().collect::<Vec<char>>();
+            let idx = idx % (code.len() - 1);
+            code[idx] =
+                KYOCODE_CHARS[(KYOCODE_CHARS.binary_search(&code[idx]).unwrap() + add + 1)
+                              % KYOCODE_CHARS.len()];
+            let code = code.iter().collect::<String>();
+
+            TestResult::from_bool(decode(&code).is_none())
         }
     }
 }
