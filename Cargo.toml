@@ -2,6 +2,8 @@
 name = "kyocode"
 version = "0.1.0"
 authors = ["sinkuu <sinkuu@sinkuu.xyz>"]
+description = "Kyocode(経code) binary-to-text scheme implementation"
+license = "MIT"
 
 [dependencies]
 ring = "0.12.1"

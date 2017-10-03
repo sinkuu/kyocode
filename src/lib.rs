@@ -1,3 +1,5 @@
+//! Kyocode(経code) binary-to-text scheme implementation.
+
 extern crate arrayvec;
 #[cfg(test)]
 #[macro_use]
