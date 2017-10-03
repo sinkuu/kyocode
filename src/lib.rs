@@ -27,13 +27,13 @@ pub fn encode(bs: &[u8]) -> String {
     );
     // let cap = res.capacity();
 
-    let hash = digest(&SHA256, bs);
-    let hash = &hash.as_ref()[0..5];
-    push_bytes(hash, &mut res);
-
     let last = bs.len().checked_mul(8).expect("length overflow") % 10;
     let padded = 0 < last && last <= 2; // padded more than a byte
     res.push(KYOCODE_CHARS[if padded { 1 } else { 0 }]);
+
+    let hash = digest(&SHA256, bs);
+    let hash = &hash.as_ref()[0..5];
+    push_bytes(hash, &mut res);
 
     push_bytes(bs, &mut res);
 
@@ -96,11 +96,11 @@ pub fn decode(s: &str) -> Option<Vec<u8>> {
     let header = try_opt!(header);
     let header = header.as_slice();
 
-    if header[4] & (((1 << 10) - 1) ^ 1) != 0 {
+    if header[0] & (((1 << 10) - 1) ^ 1) != 0 {
         return None;
     }
 
-    let padded = header[4] & 1 == 1; // padded more than a byte
+    let padded = header[0] & 1 == 1; // padded more than a byte
 
     let len = s.len() / 3 - 5;
     let mut res = Vec::with_capacity(
@@ -130,11 +130,11 @@ pub fn decode(s: &str) -> Option<Vec<u8>> {
 
     let hash_res = digest(&SHA256, &res);
     let hash = &[
-        (header[0] >> 2) as u8,
-        (header[0] << 6 | header[1] >> 4) as u8,
-        (header[1] << 4 | header[2] >> 6) as u8,
-        (header[2] << 2 | header[3] >> 8) as u8,
-        header[3] as u8,
+        (header[1] >> 2) as u8,
+        (header[1] << 6 | header[2] >> 4) as u8,
+        (header[2] << 4 | header[3] >> 6) as u8,
+        (header[3] << 2 | header[4] >> 8) as u8,
+        header[4] as u8,
     ];
 
     if &hash_res.as_ref()[0..5] != hash {
@@ -152,12 +152,13 @@ mod test {
 
     #[test]
     fn sample() {
-        assert!(encode(b"Hello world") == "患的桟春一宴沈紺刊剤袋附液悔");
-        assert!(decode("患的桟春一宴沈紺刊剤袋附液悔").unwrap() == b"Hello world");
-        assert!(decode("患的桟春一宴沈紺刊時袋附液悔").is_none());
-        assert!(decode("患的桟春時宴沈紺刊剤袋附液悔").is_none());
-        assert!(decode("患的桟春一宴沈紺☃剤袋附液悔").is_none());
-        assert!(decode("☃的桟春一宴沈紺刊剤袋附液悔").is_none());
+        assert!(encode(b"Hello world") == "一患的桟春宴沈紺刊剤袋附液悔");
+        assert!(decode("一患的桟春宴沈紺刊剤袋附液悔").unwrap() == b"Hello world");
+        assert!(decode("一患的桟春宴沈紺刊時袋附液悔").is_none());
+        assert!(decode("時患的桟春宴沈紺刊剤袋附液悔").is_none());
+        assert!(decode("一患的桟春宴沈紺☃剤袋附液悔").is_none());
+        assert!(decode("☃患的桟春宴沈紺刊剤袋附液悔").is_none());
+        assert!(decode("一患☃桟春宴沈紺刊剤袋附液悔").is_none());
     }
 
     quickcheck! {
