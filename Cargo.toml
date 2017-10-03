@@ -5,6 +5,8 @@ authors = ["sinkuu <sinkuu@sinkuu.xyz>"]
 
 [dependencies]
 ring = "0.12.1"
+try_opt = "0.1.1"
+arrayvec = "0.4.2"
 
 [dev-dependencies]
 quickcheck = "0.4.1"

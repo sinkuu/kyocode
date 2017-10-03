@@ -1,16 +1,16 @@
-extern crate itertools;
+extern crate arrayvec;
 #[cfg(test)]
 #[macro_use]
 extern crate quickcheck;
 extern crate ring;
+#[macro_use]
+extern crate try_opt;
 
 use ring::digest::{digest, SHA256};
+use arrayvec::ArrayVec;
 
 mod chars;
 pub use chars::KYOCODE_CHARS;
-
-const BITS_PER_CODE: u8 = 10;
-const BITS_PER_BYTE: u8 = 8;
 
 fn div_roundup(lhs: usize, rhs: usize) -> usize {
     lhs / rhs + if lhs % rhs > 0 { 1 } else { 0 }
@@ -82,48 +82,28 @@ pub fn decode(s: &str) -> Option<Vec<u8>> {
     let mut res = Vec::with_capacity(len / 8 * 10 + (len % 8) * 10 / 8);
 
     let header = &s[0..3 * 5];
+    let header = header
+        .chars()
+        .map(|c| KYOCODE_CHARS.binary_search(&c).ok())
+        .collect::<Option<ArrayVec<[usize; 5]>>>();
+    let header = try_opt!(header);
+    let header = header.as_slice();
 
     let mut rem = 8;
     let mut acc = 0u8;
     for c in s.chars().skip(5) {
-        if let Ok(i) = KYOCODE_CHARS.binary_search(&c) {
-            let i = i as u16;
+        let i = try_opt!(KYOCODE_CHARS.binary_search(&c)) as u16;
 
-            let mut nxt = BITS_PER_CODE - rem;
-            acc |= (i >> nxt) as u8;
-            res.push(acc);
-            if nxt > BITS_PER_BYTE {
-                res.push((i >> (nxt - BITS_PER_BYTE)) as u8);
-                nxt -= BITS_PER_BYTE;
-            }
-            rem = BITS_PER_BYTE - nxt;
-            acc = (i << rem) as u8;
-        } else {
-            return None;
+        let mut nxt = 10 - rem;
+        acc |= (i >> nxt) as u8;
+        res.push(acc);
+        if nxt > 8 {
+            res.push((i >> (nxt - 8)) as u8);
+            nxt -= 8;
         }
-        // println!("{} {:010b} {:2}", c, acc, rem);
+        rem = 8 - nxt;
+        acc = (i << rem) as u8;
     }
-
-    let header = {
-        let mut header = header.chars();
-        &[
-            KYOCODE_CHARS
-                .binary_search(&header.next().unwrap())
-                .unwrap(),
-            KYOCODE_CHARS
-                .binary_search(&header.next().unwrap())
-                .unwrap(),
-            KYOCODE_CHARS
-                .binary_search(&header.next().unwrap())
-                .unwrap(),
-            KYOCODE_CHARS
-                .binary_search(&header.next().unwrap())
-                .unwrap(),
-            KYOCODE_CHARS
-                .binary_search(&header.next().unwrap())
-                .unwrap(),
-        ]
-    };
 
     if rem == 0 && header[4] & 1 == 0 {
         res.push(acc);
