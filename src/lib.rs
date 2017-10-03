@@ -159,6 +159,10 @@ mod test {
         assert!(decode("一患的桟春宴沈紺☃剤袋附液悔").is_none());
         assert!(decode("☃患的桟春宴沈紺刊剤袋附液悔").is_none());
         assert!(decode("一患☃桟春宴沈紺刊剤袋附液悔").is_none());
+
+        assert!(encode(b"!!!!") == "丁品臣剥究力杯側女");
+        assert!(decode("丁品臣剥究力杯側女").unwrap() == b"!!!!");
+        assert!(decode("一品臣剥究力杯側女").is_none());
     }
 
     quickcheck! {
